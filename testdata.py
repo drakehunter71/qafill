@@ -1,9 +1,11 @@
 try:
+    import os
     import keyboard
     import pyperclip
     import time
     import threading
     import tkinter as tk
+    from datetime import datetime
     from faker import Faker
     from plyer import notification
     import pystray
@@ -20,6 +22,12 @@ fake = Faker()
 notifications_enabled = False
 last_label = None
 last_value = None
+
+LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qafill.log")
+
+def log(message):
+    with open(LOG_PATH, "a") as f:
+        f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
 
 # Payment processor test cards
 # Ctrl+Alt+1 through Ctrl+Alt+4
@@ -165,6 +173,8 @@ for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
         f"ctrl+alt+{i}",
         lambda lbl=label, val=value: copy(lbl, val),
     )
+
+log("startup ok")
 
 # Run tray icon on main thread - keeps process alive
 icon = pystray.Icon("qafill", make_icon_image(), "qafill", build_menu())
