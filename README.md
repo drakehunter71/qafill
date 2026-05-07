@@ -19,9 +19,22 @@ setup.bat
 
 ## Starting
 
-Double-click `start.bat`, or restart Windows if you ran setup.
+**Double-click** `start.bat`, or restart Windows after running setup for auto-start.
 
-A blue dot appears in the system tray to confirm it is running.
+**PowerShell:**
+```powershell
+Start-Process -FilePath (Get-Command pythonw.exe).Source -ArgumentList "$PWD\testdata.py" -WorkingDirectory $PWD
+```
+
+**From anywhere:**
+```powershell
+$q = "C:\path\to\qafill"
+Start-Process -FilePath (Get-Command pythonw.exe).Source -ArgumentList "$q\testdata.py" -WorkingDirectory $q
+```
+
+A blue dot appears in the system tray overflow (`^` near the clock) to confirm it is running. Startup is also logged to `qafill.log` in the project folder.
+
+**Stopping:** Right-click the tray icon > Exit.
 
 ## Hotkeys
 
