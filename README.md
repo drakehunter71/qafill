@@ -41,6 +41,8 @@ A blue dot appears in the system tray overflow (`^` near the clock) to confirm i
 | Hotkey | Output |
 |--------|--------|
 | `Ctrl+Alt+N` | Full name |
+| `Ctrl+Alt+F` | First name |
+| `Ctrl+Alt+L` | Last name |
 | `Ctrl+Alt+E` | Email address |
 | `Ctrl+Alt+P` | Phone number |
 | `Ctrl+Alt+A` | Full address (single line) |

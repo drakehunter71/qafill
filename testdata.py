@@ -44,12 +44,14 @@ TEST_CARDS = [
 ]
 
 HOTKEYS = {
-    "ctrl+alt+n": ("Name",    lambda: fake.name()),
-    "ctrl+alt+e": ("Email",   lambda: fake.email()),
-    "ctrl+alt+p": ("Phone",   lambda: fake.phone_number()),
-    "ctrl+alt+a": ("Address", lambda: fake.address().replace("\n", ", ")),
-    "ctrl+alt+z": ("ZIP",     lambda: fake.zipcode()),
-    "ctrl+alt+c": ("Card #",  lambda: fake.credit_card_number()),
+    "ctrl+alt+n": ("Name",       lambda: fake.name()),
+    "ctrl+alt+f": ("First Name", lambda: fake.first_name()),
+    "ctrl+alt+l": ("Last Name",  lambda: fake.last_name()),
+    "ctrl+alt+e": ("Email",      lambda: fake.email()),
+    "ctrl+alt+p": ("Phone",      lambda: fake.phone_number()),
+    "ctrl+alt+a": ("Address",    lambda: fake.address().replace("\n", ", ")),
+    "ctrl+alt+z": ("ZIP",        lambda: fake.zipcode()),
+    "ctrl+alt+c": ("Card #",     lambda: fake.credit_card_number()),
 }
 
 # Local custom strings - Ctrl+Alt+5 through Ctrl+Alt+8
@@ -62,6 +64,8 @@ except ImportError:
 
 HOTKEY_REFERENCE = [
     ("Ctrl+Alt+N", "Full Name"),
+    ("Ctrl+Alt+F", "First Name"),
+    ("Ctrl+Alt+L", "Last Name"),
     ("Ctrl+Alt+E", "Email"),
     ("Ctrl+Alt+P", "Phone"),
     ("Ctrl+Alt+A", "Address"),
