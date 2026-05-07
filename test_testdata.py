@@ -386,7 +386,52 @@ class TestArmMode(unittest.TestCase):
 
 
 class TestOnPress(unittest.TestCase):
-    """Tests for _on_press() - key event handler."""
+    """Tests for _on_press() - modifier tracking only.
+
+    Since suppressed events don't reach _on_press, all armed-mode logic
+    runs in _win32_event_filter. _on_press only tracks modifier state.
+    """
+
+    def setUp(self):
+        testdata._current_modifiers = set()
+
+    def tearDown(self):
+        testdata._current_modifiers = set()
+
+    def test_modifier_keys_tracked(self):
+        testdata._on_press(Key.ctrl_l)
+        assert Key.ctrl_l in testdata._current_modifiers
+        testdata._on_press(Key.shift_r)
+        assert Key.shift_r in testdata._current_modifiers
+
+    def test_non_modifier_not_tracked(self):
+        testdata._on_press(KeyCode.from_char('n'))
+        assert len(testdata._current_modifiers) == 0
+
+
+class TestVkToChar(unittest.TestCase):
+    """Tests for _vk_to_char() - VK code to chord key conversion."""
+
+    def test_letter_keys(self):
+        assert testdata._vk_to_char(0x41) == 'a'  # VK_A
+        assert testdata._vk_to_char(0x4E) == 'n'  # VK_N
+        assert testdata._vk_to_char(0x5A) == 'z'  # VK_Z
+
+    def test_number_keys(self):
+        assert testdata._vk_to_char(0x30) == '0'
+        assert testdata._vk_to_char(0x31) == '1'
+        assert testdata._vk_to_char(0x39) == '9'
+
+    def test_special_keys_return_none(self):
+        assert testdata._vk_to_char(0x20) is None   # VK_SPACE
+        assert testdata._vk_to_char(0x0D) is None   # VK_RETURN
+        assert testdata._vk_to_char(0x1B) is None   # VK_ESCAPE
+
+
+class TestWin32EventFilter(unittest.TestCase):
+    """Tests for _win32_event_filter() - key suppression and dispatch."""
+
+    WM_KEYDOWN = 0x0100
 
     def setUp(self):
         testdata.icon = MagicMock()
@@ -396,44 +441,64 @@ class TestOnPress(unittest.TestCase):
         testdata._arm_last_time = 0.0
         testdata._chord_map = {}
         testdata._current_modifiers = set()
+        testdata._listener = MagicMock()
 
     def tearDown(self):
-        # Clean up any timers left by arm_mode
         if testdata._arm_timer:
             testdata._arm_timer.cancel()
             testdata._arm_timer = None
         testdata._armed = False
         testdata._chord_map = {}
         testdata._current_modifiers = set()
+        testdata._listener = None
 
-    def test_arm_combo_ctrl_shift_space(self):
-        testdata._on_press(Key.ctrl_l)
-        testdata._on_press(Key.shift_l)
-        testdata._on_press(Key.space)
+    def _make_data(self, vk_code):
+        data = MagicMock()
+        data.vkCode = vk_code
+        return data
+
+    def test_arm_combo_triggers_arm(self):
+        testdata._current_modifiers = {Key.ctrl_l, Key.shift_l}
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0x20))
         assert testdata._armed is True
 
-    def test_arm_combo_requires_all_three(self):
-        testdata._on_press(Key.ctrl_l)
-        testdata._on_press(Key.space)  # no shift
+    def test_arm_combo_suppresses_space(self):
+        testdata._current_modifiers = {Key.ctrl_l, Key.shift_l}
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0x20))
+        testdata._listener.suppress_event.assert_called_once()
+
+    def test_space_without_modifiers_not_suppressed(self):
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0x20))
+        testdata._listener.suppress_event.assert_not_called()
         assert testdata._armed is False
 
-    def test_modifier_keys_tracked(self):
-        testdata._on_press(Key.ctrl_l)
-        assert Key.ctrl_l in testdata._current_modifiers
-        testdata._on_press(Key.shift_r)
-        assert Key.shift_r in testdata._current_modifiers
+    def test_modifier_keys_not_suppressed(self):
+        testdata._armed = True
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0xA2))  # VK_LCONTROL
+        testdata._listener.suppress_event.assert_not_called()
 
-    def test_non_chord_key_disarms(self):
+    def test_armed_chord_key_dispatches_action(self):
+        action_called = []
+        testdata._armed = True
+        testdata._chord_map = {"n": lambda: action_called.append(True)}
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0x4E))  # VK_N
+        testdata._listener.suppress_event.assert_called_once()
+        # Action runs in a thread, give it a moment
+        import time
+        time.sleep(0.1)
+        assert len(action_called) == 1
+
+    def test_armed_non_chord_key_disarms(self):
         testdata._armed = True
         testdata._chord_map = {"n": lambda: None}
-        testdata._on_press(KeyCode.from_char('x'))  # not in chord map
+        testdata._win32_event_filter(self.WM_KEYDOWN, self._make_data(0x58))  # VK_X
         assert testdata._armed is False
+        testdata._listener.suppress_event.assert_called_once()
 
-    def test_modifier_does_not_disarm(self):
+    def test_non_keydown_messages_ignored(self):
         testdata._armed = True
-        testdata._chord_map = {"n": lambda: None}
-        testdata._on_press(Key.ctrl_l)
-        assert testdata._armed is True
+        testdata._win32_event_filter(0x0101, self._make_data(0x4E))  # WM_KEYUP
+        testdata._listener.suppress_event.assert_not_called()
 
 
 class TestOnRelease(unittest.TestCase):

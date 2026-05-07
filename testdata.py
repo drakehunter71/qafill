@@ -80,27 +80,24 @@ def _is_arm_combo(key):
     return is_space and _ctrl_held() and _shift_held()
 
 
+def _vk_to_char(vk):
+    """Convert a Windows virtual key code to a chord map key string."""
+    if 0x30 <= vk <= 0x39:   # 0-9
+        return chr(vk)
+    if 0x41 <= vk <= 0x5A:   # A-Z -> a-z
+        return chr(vk).lower()
+    return None
+
+
 def _on_press(key):
-    """Handle all key-down events from the single global Listener."""
+    """Handle key-down events that were NOT suppressed by the filter.
+
+    Only modifier keys and non-armed regular keys reach here.
+    All armed key logic runs in _win32_event_filter since suppressed
+    events never reach on_press.
+    """
     if key in _MODIFIER_KEYS:
         _current_modifiers.add(key)
-
-    if _is_arm_combo(key):
-        arm_mode()
-        return
-
-    if not _armed:
-        return
-
-    name = _key_char(key)
-    if name and name in _chord_map:
-        action = _chord_map[name]
-        threading.Thread(
-            target=lambda a=action: (disarm_mode(), a()),
-            daemon=True,
-        ).start()
-    elif key not in _MODIFIER_KEYS:
-        disarm_mode()
 
 
 def _on_release(key):
@@ -110,9 +107,8 @@ def _on_release(key):
 def _win32_event_filter(msg, data):
     """Suppress key events selectively so they don't reach the focused app.
 
-    Called before on_press/on_release for each event. Calling
-    _listener.suppress_event() prevents the event from reaching other
-    applications, but on_press/on_release still fire.
+    This is the main key dispatch point. Suppressed events do NOT reach
+    on_press/on_release, so all armed-mode logic runs here.
     """
     WM_KEYDOWN = 0x0100
     WM_SYSKEYDOWN = 0x0104
@@ -126,14 +122,23 @@ def _win32_event_filter(msg, data):
     if vk in _VK_MODIFIERS:
         return
 
-    # Suppress all non-modifier key-downs while armed
-    if _armed:
+    # ARM combo: Ctrl+Shift+Space
+    if vk == 0x20 and _ctrl_held() and _shift_held():
+        arm_mode()
         _listener.suppress_event()
         return
 
-    # Suppress space when Ctrl+Shift held (ARM combo) so it doesn't
-    # type a space or trigger other shortcuts in the focused app
-    if vk == 0x20 and _ctrl_held() and _shift_held():
+    # When armed: suppress all keys, dispatch chord actions or disarm
+    if _armed:
+        char = _vk_to_char(vk)
+        if char and char in _chord_map:
+            action = _chord_map[char]
+            threading.Thread(
+                target=lambda a=action: (disarm_mode(), a()),
+                daemon=True,
+            ).start()
+        else:
+            disarm_mode()
         _listener.suppress_event()
 
 
