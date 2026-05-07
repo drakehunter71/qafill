@@ -1,5 +1,6 @@
 try:
     import os
+    import ctypes
     import keyboard
     import pyperclip
     import time
@@ -17,6 +18,9 @@ except ImportError as e:
         f"{e}\n\nRun setup.bat to install all dependencies."
     )
     raise SystemExit(1)
+
+# Register app identity so Windows shows "qafill" in system tray icons list
+ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("qafill")
 
 fake = Faker()
 notifications_enabled = False
@@ -75,10 +79,11 @@ HOTKEY_REFERENCE = [
 ]
 
 
-def make_icon_image():
+def make_icon_image(active=False):
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([1, 1, 30, 30], fill=(30, 120, 220))
+    color = (220, 120, 30) if active else (30, 120, 220)  # orange = on, blue = off
+    draw.ellipse([1, 1, 30, 30], fill=color)
     return img
 
 
@@ -105,6 +110,7 @@ def repeat_last():
 def toggle_notifications():
     global notifications_enabled
     notifications_enabled = not notifications_enabled
+    icon.icon = make_icon_image(notifications_enabled)
     notification.notify(
         title="qafill",
         message=f"Notifications {'ON' if notifications_enabled else 'OFF'}",
@@ -177,5 +183,5 @@ for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
 log("startup ok")
 
 # Run tray icon on main thread - keeps process alive
-icon = pystray.Icon("qafill", make_icon_image(), "qafill", build_menu())
+icon = pystray.Icon("qafill", make_icon_image(notifications_enabled), "qafill", build_menu())
 icon.run()
