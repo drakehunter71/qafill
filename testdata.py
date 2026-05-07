@@ -40,6 +40,14 @@ HOTKEYS = {
     "ctrl+alt+c": ("Card #",  lambda: fake.credit_card_number()),
 }
 
+# Local custom strings - Ctrl+Alt+5 through Ctrl+Alt+8
+# Create local.py (gitignored) using local.example.py as a template
+try:
+    from local import CUSTOM_STRINGS
+    CUSTOM_STRINGS = CUSTOM_STRINGS[:4]
+except ImportError:
+    CUSTOM_STRINGS = []
+
 HOTKEY_REFERENCE = [
     ("Ctrl+Alt+N", "Full Name"),
     ("Ctrl+Alt+E", "Email"),
@@ -50,6 +58,9 @@ HOTKEY_REFERENCE = [
 ] + [
     (f"Ctrl+Alt+{i}", f"{card[0]} test card")
     for i, card in enumerate(TEST_CARDS, start=1)
+] + [
+    (f"Ctrl+Alt+{i}", label)
+    for i, (label, _) in enumerate(CUSTOM_STRINGS, start=5)
 ] + [
     ("Ctrl+Alt+R", "Repeat Last"),
     ("Ctrl+Alt+T", "Toggle Notifications"),
@@ -147,6 +158,12 @@ for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
     keyboard.add_hotkey(
         f"ctrl+alt+{i}",
         lambda t=card_type, n=number: copy(f"{t}", n),
+    )
+
+for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
+    keyboard.add_hotkey(
+        f"ctrl+alt+{i}",
+        lambda lbl=label, val=value: copy(lbl, val),
     )
 
 # Run tray icon on main thread - keeps process alive

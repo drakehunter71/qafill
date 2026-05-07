@@ -50,6 +50,21 @@ Right-click the blue dot to:
 - Open the hotkey reference window
 - Exit
 
+## Local Custom Strings
+
+Create `local.py` (gitignored) using `local.example.py` as a template. Define up to 4 personal strings - test credentials, environment URLs, frequently used values, anything you paste repeatedly.
+
+```python
+CUSTOM_STRINGS = [
+    ("Test Email",    "testuser@example.com"),
+    ("Test Password", "Password123!"),
+    ("Base URL",      "https://staging.example.com"),
+    ("API Key",       "sk-test-abc123"),
+]
+```
+
+Mapped to `Ctrl+Alt+5` through `Ctrl+Alt+8`. Only the hotkeys with defined values are registered - unused slots are ignored.
+
 ## Customizing Test Cards
 
 Edit `TEST_CARDS` in `testdata.py` to use your payment processor's test card numbers:
