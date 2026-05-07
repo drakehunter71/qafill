@@ -124,7 +124,9 @@ def copy(label, value):
             app_name="qafill",
             timeout=3,
         )
-    time.sleep(0.05)  # let hotkey modifier keys release before pasting
+    keyboard.release("ctrl")
+    keyboard.release("alt")
+    time.sleep(0.05)
     keyboard.send("ctrl+v")
 
 
