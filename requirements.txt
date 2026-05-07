@@ -1,0 +1,6 @@
+faker
+pyperclip
+keyboard
+plyer
+pystray
+Pillow
