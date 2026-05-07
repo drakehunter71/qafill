@@ -52,6 +52,7 @@ A blue dot appears in the system tray overflow (`^` near the clock) to confirm i
 | `Ctrl+Alt+2` | Test card 2 |
 | `Ctrl+Alt+3` | Test card 3 |
 | `Ctrl+Alt+4` | Test card 4 |
+| `Ctrl+Alt+5-8` | Custom strings (local.py) |
 | `Ctrl+Alt+R` | Repeat last generated value |
 | `Ctrl+Alt+T` | Toggle toast notifications on/off |
 
@@ -59,26 +60,48 @@ All hotkeys copy to clipboard and auto-paste into the focused field.
 
 ## System Tray
 
-Right-click the blue dot to:
+The tray icon changes color to reflect notification state:
+- **Blue dot** - notifications off
+- **Orange dot** - notifications on
 
-- Toggle notifications on/off
-- Open the hotkey reference window
-- Exit
+The app appears as **qafill** in Settings > Personalization > Taskbar > Other system tray icons (not "python").
+
+Right-click to toggle notifications, open the hotkey reference window, or exit.
 
 ## Local Custom Strings
 
-Create `local.py` (gitignored) using `local.example.py` as a template. Define up to 4 personal strings - test credentials, environment URLs, frequently used values, anything you paste repeatedly.
+Create `local.py` (gitignored) using `local.example.py` as a template. Mapped to `Ctrl+Alt+5` through `Ctrl+Alt+8`. Values resolve once at startup.
+
+Values can be a **literal string** or any **callable** - use a lambda to pull from any source:
 
 ```python
+import os
+import subprocess
+
 CUSTOM_STRINGS = [
-    ("Test Email",    "testuser@example.com"),
-    ("Test Password", "Password123!"),
-    ("Base URL",      "https://staging.example.com"),
-    ("API Key",       "sk-test-abc123"),
+    ("Test Email",    "testuser@example.com"),                   # literal
+    ("Password",      lambda: os.environ.get("MY_PASS", "")),    # Windows env var
+    ("OP Secret",     lambda: subprocess.run(                    # 1Password CLI
+                          ["op", "read", "op://vault/item/field"],
+                          capture_output=True, text=True
+                      ).stdout.strip()),
+    ("From File",     lambda: open("secret.txt").read().strip()), # file
 ]
 ```
 
-Mapped to `Ctrl+Alt+5` through `Ctrl+Alt+8`. Only the hotkeys with defined values are registered - unused slots are ignored.
+### Windows environment variables
+
+```powershell
+# Set (persists across reboots)
+[System.Environment]::SetEnvironmentVariable("MY_PASS", 'value$here', "User")
+
+# Verify
+[System.Environment]::GetEnvironmentVariable("MY_PASS", "User")
+```
+
+Use **single quotes** in PowerShell if the value contains `$` - double quotes will expand it as a variable.
+
+Restart qafill after adding new variables.
 
 ## Customizing Test Cards
 
