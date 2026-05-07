@@ -34,6 +34,21 @@ ARM_TIMEOUT = 3.0  # seconds before auto-disarm
 _armed = False
 _arm_timer = None
 _armed_hotkeys = []
+_key_hook = None
+
+MODIFIER_KEYS = {
+    'ctrl', 'shift', 'alt',
+    'left ctrl', 'right ctrl',
+    'left shift', 'right shift',
+    'left alt', 'right alt',
+    'left windows', 'right windows',
+    'caps lock', 'num lock', 'scroll lock',
+}
+
+def _disarm_on_any_key(event):
+    if _armed and event.event_type == keyboard.KEY_DOWN:
+        if event.name not in MODIFIER_KEYS:
+            disarm_mode()
 
 
 def log(message):
@@ -150,7 +165,7 @@ def toggle_notifications():
 
 
 def disarm_mode():
-    global _armed, _arm_timer, _armed_hotkeys
+    global _armed, _arm_timer, _armed_hotkeys, _key_hook
     _armed = False
     icon.icon = make_icon_image(notifications_enabled, armed=False)
     if _arm_timer:
@@ -162,6 +177,9 @@ def disarm_mode():
         except Exception:
             pass
     _armed_hotkeys = []
+    if _key_hook:
+        keyboard.unhook(_key_hook)
+        _key_hook = None
 
 
 def arm_mode():
@@ -203,6 +221,10 @@ def arm_mode():
     _arm_timer = threading.Timer(ARM_TIMEOUT, disarm_mode)
     _arm_timer.daemon = True
     _arm_timer.start()
+
+    # Disarm on any non-chord, non-modifier key press
+    # Registered after chord hotkeys so suppressed chord keys don't reach this hook
+    _key_hook = keyboard.hook(_disarm_on_any_key)
 
 
 def show_hotkeys_window():
