@@ -42,7 +42,7 @@ def resolve(value):
         return f"[error: {e}]"
 
 # Payment processor test cards
-# Ctrl+Alt+1 through Ctrl+Alt+4
+# Ctrl+Space, 1 through Ctrl+Space, 4
 # Add or swap out cards for your processor - format: (label, number, expiry, cvv)
 TEST_CARDS = [
     ("Visa",        "4263982640269299", "02/2026", "837"),
@@ -52,14 +52,14 @@ TEST_CARDS = [
 ]
 
 HOTKEYS = {
-    "ctrl+alt+n": ("Name",       lambda: fake.name()),
-    "ctrl+alt+f": ("First Name", lambda: fake.first_name()),
-    "ctrl+alt+l": ("Last Name",  lambda: fake.last_name()),
-    "ctrl+alt+e": ("Email",      lambda: fake.email()),
-    "ctrl+alt+p": ("Phone",      lambda: fake.phone_number()),
-    "ctrl+alt+a": ("Address",    lambda: fake.address().replace("\n", ", ")),
-    "ctrl+alt+z": ("ZIP",        lambda: fake.zipcode()),
-    "ctrl+alt+c": ("Card #",     lambda: fake.credit_card_number()),
+    "ctrl+space, n": ("Name",       lambda: fake.name()),
+    "ctrl+space, f": ("First Name", lambda: fake.first_name()),
+    "ctrl+space, l": ("Last Name",  lambda: fake.last_name()),
+    "ctrl+space, e": ("Email",      lambda: fake.email()),
+    "ctrl+space, p": ("Phone",      lambda: fake.phone_number()),
+    "ctrl+space, a": ("Address",    lambda: fake.address().replace("\n", ", ")),
+    "ctrl+space, z": ("ZIP",        lambda: fake.zipcode()),
+    "ctrl+space, c": ("Card #",     lambda: fake.credit_card_number()),
 }
 
 # Load .env into os.environ before importing local.py so lambdas can use os.environ.get()
@@ -76,7 +76,7 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# Local custom strings - Ctrl+Alt+5 through Ctrl+Alt+8
+# Local custom strings - Ctrl+Space, 5 through Ctrl+Space, 8
 # Create local.py (gitignored) using local.example.py as a template
 try:
     from local import CUSTOM_STRINGS
@@ -85,23 +85,23 @@ except ImportError:
     CUSTOM_STRINGS = []
 
 HOTKEY_REFERENCE = [
-    ("Ctrl+Alt+N", "Full Name"),
-    ("Ctrl+Alt+F", "First Name"),
-    ("Ctrl+Alt+L", "Last Name"),
-    ("Ctrl+Alt+E", "Email"),
-    ("Ctrl+Alt+P", "Phone"),
-    ("Ctrl+Alt+A", "Address"),
-    ("Ctrl+Alt+Z", "ZIP Code"),
-    ("Ctrl+Alt+C", "Random Card #"),
+    ("Ctrl+Space, N", "Full Name"),
+    ("Ctrl+Space, F", "First Name"),
+    ("Ctrl+Space, L", "Last Name"),
+    ("Ctrl+Space, E", "Email"),
+    ("Ctrl+Space, P", "Phone"),
+    ("Ctrl+Space, A", "Address"),
+    ("Ctrl+Space, Z", "ZIP Code"),
+    ("Ctrl+Space, C", "Random Card #"),
 ] + [
-    (f"Ctrl+Alt+{i}", f"{card[0]} test card")
+    (f"Ctrl+Space, {i}", f"{card[0]} test card")
     for i, card in enumerate(TEST_CARDS, start=1)
 ] + [
-    (f"Ctrl+Alt+{i}", label)
+    (f"Ctrl+Space, {i}", label)
     for i, (label, _) in enumerate(CUSTOM_STRINGS, start=5)
 ] + [
-    ("Ctrl+Alt+R", "Repeat Last"),
-    ("Ctrl+Alt+T", "Toggle Notifications"),
+    ("Ctrl+Space, R", "Repeat Last"),
+    ("Ctrl+Space, T", "Toggle Notifications"),
 ]
 
 
@@ -125,7 +125,6 @@ def copy(label, value):
             timeout=3,
         )
     keyboard.release("ctrl")
-    keyboard.release("alt")
     time.sleep(0.05)
     keyboard.send("ctrl+v")
 
@@ -190,21 +189,21 @@ def build_menu():
 
 
 # Register hotkeys
-keyboard.add_hotkey("ctrl+alt+t", toggle_notifications)
-keyboard.add_hotkey("ctrl+alt+r", repeat_last)
+keyboard.add_hotkey("ctrl+space, t", toggle_notifications)
+keyboard.add_hotkey("ctrl+space, r", repeat_last)
 
 for hotkey, (label, generator) in HOTKEYS.items():
     keyboard.add_hotkey(hotkey, lambda lbl=label, gen=generator: copy(lbl, gen()))
 
 for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
     keyboard.add_hotkey(
-        f"ctrl+alt+{i}",
+        f"ctrl+space, {i}",
         lambda t=card_type, n=number: copy(f"{t}", n),
     )
 
 for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
     keyboard.add_hotkey(
-        f"ctrl+alt+{i}",
+        f"ctrl+space, {i}",
         lambda lbl=label, val=value: copy(lbl, val),
     )
 
