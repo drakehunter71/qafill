@@ -33,6 +33,14 @@ def log(message):
     with open(LOG_PATH, "a") as f:
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
 
+def resolve(value):
+    """Call the value if callable, otherwise use it as a literal string."""
+    try:
+        return value() if callable(value) else value
+    except Exception as e:
+        log(f"resolve error: {e}")
+        return f"[error: {e}]"
+
 # Payment processor test cards
 # Ctrl+Alt+1 through Ctrl+Alt+4
 # Add or swap out cards for your processor - format: (label, number, expiry, cvv)
@@ -58,7 +66,7 @@ HOTKEYS = {
 # Create local.py (gitignored) using local.example.py as a template
 try:
     from local import CUSTOM_STRINGS
-    CUSTOM_STRINGS = CUSTOM_STRINGS[:4]
+    CUSTOM_STRINGS = [(label, resolve(value)) for label, value in CUSTOM_STRINGS[:4]]
 except ImportError:
     CUSTOM_STRINGS = []
 
