@@ -1,7 +1,6 @@
 try:
     import os
     import ctypes
-    import keyboard
     import pyperclip
     import time
     import threading
@@ -11,6 +10,7 @@ try:
     from plyer import notification
     import pystray
     from PIL import Image, ImageDraw
+    from pynput.keyboard import Key, KeyCode, Listener, Controller
 except ImportError as e:
     import tkinter.messagebox as mb
     mb.showerror(
@@ -28,28 +28,113 @@ last_label = None
 last_value = None
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qafill.log")
-ARM_KEY = "ctrl+shift+space"
 ARM_TIMEOUT = 3.0  # seconds before auto-disarm
 
 _armed = False
 _arm_timer = None
-_armed_hotkeys = []
-_key_hook = None
 _arm_last_time = 0.0
+_chord_map = {}
 
-MODIFIER_KEYS = {
-    'ctrl', 'shift', 'alt',
-    'left ctrl', 'right ctrl',
-    'left shift', 'right shift',
-    'left alt', 'right alt',
-    'left windows', 'right windows',
-    'caps lock', 'num lock', 'scroll lock',
+_controller = Controller()
+_listener = None
+_current_modifiers = set()
+
+# pynput Key objects that are modifiers (never trigger chord actions)
+_MODIFIER_KEYS = {
+    Key.ctrl, Key.ctrl_l, Key.ctrl_r,
+    Key.shift, Key.shift_l, Key.shift_r,
+    Key.alt, Key.alt_l, Key.alt_r, Key.alt_gr,
+    Key.cmd, Key.cmd_l, Key.cmd_r,
+    Key.caps_lock, Key.num_lock, Key.scroll_lock,
 }
 
-def _disarm_on_any_key(event):
-    if _armed and event.event_type == keyboard.KEY_DOWN:
-        if event.name not in MODIFIER_KEYS:
-            disarm_mode()
+# VK codes for modifier keys (used by win32_event_filter)
+_VK_MODIFIERS = {
+    0x10, 0x11, 0x12,        # VK_SHIFT, VK_CONTROL, VK_MENU
+    0xA0, 0xA1,              # VK_LSHIFT, VK_RSHIFT
+    0xA2, 0xA3,              # VK_LCONTROL, VK_RCONTROL
+    0xA4, 0xA5,              # VK_LMENU, VK_RMENU
+    0x5B, 0x5C,              # VK_LWIN, VK_RWIN
+    0x14, 0x90, 0x91,        # VK_CAPITAL, VK_NUMLOCK, VK_SCROLL
+}
+
+
+def _ctrl_held():
+    return bool(_current_modifiers & {Key.ctrl, Key.ctrl_l, Key.ctrl_r})
+
+
+def _shift_held():
+    return bool(_current_modifiers & {Key.shift, Key.shift_l, Key.shift_r})
+
+
+def _key_char(key):
+    """Get the lowercase character for a key, or None for non-character keys."""
+    if isinstance(key, KeyCode) and key.char:
+        return key.char.lower()
+    return None
+
+
+def _is_arm_combo(key):
+    """Return True if Ctrl+Shift+Space was just completed."""
+    is_space = key == Key.space or (isinstance(key, KeyCode) and key.char == ' ')
+    return is_space and _ctrl_held() and _shift_held()
+
+
+def _on_press(key):
+    """Handle all key-down events from the single global Listener."""
+    if key in _MODIFIER_KEYS:
+        _current_modifiers.add(key)
+
+    if _is_arm_combo(key):
+        arm_mode()
+        return
+
+    if not _armed:
+        return
+
+    name = _key_char(key)
+    if name and name in _chord_map:
+        action = _chord_map[name]
+        threading.Thread(
+            target=lambda a=action: (disarm_mode(), a()),
+            daemon=True,
+        ).start()
+    elif key not in _MODIFIER_KEYS:
+        disarm_mode()
+
+
+def _on_release(key):
+    _current_modifiers.discard(key)
+
+
+def _win32_event_filter(msg, data):
+    """Suppress key events selectively so they don't reach the focused app.
+
+    Called before on_press/on_release for each event. Calling
+    _listener.suppress_event() prevents the event from reaching other
+    applications, but on_press/on_release still fire.
+    """
+    WM_KEYDOWN = 0x0100
+    WM_SYSKEYDOWN = 0x0104
+
+    if msg not in (WM_KEYDOWN, WM_SYSKEYDOWN):
+        return
+
+    vk = data.vkCode
+
+    # Never suppress modifier keys - OS needs them for state tracking
+    if vk in _VK_MODIFIERS:
+        return
+
+    # Suppress all non-modifier key-downs while armed
+    if _armed:
+        _listener.suppress_event()
+        return
+
+    # Suppress space when Ctrl+Shift held (ARM combo) so it doesn't
+    # type a space or trigger other shortcuts in the focused app
+    if vk == 0x20 and _ctrl_held() and _shift_held():
+        _listener.suppress_event()
 
 
 def log(message):
@@ -98,7 +183,7 @@ except ImportError:
     CUSTOM_STRINGS = []
 
 HOTKEY_REFERENCE = [
-    (ARM_KEY.title().replace("+", " + "), "Arm / disarm  (dot turns green)"),
+    ("Ctrl + Shift + Space", "Arm / disarm  (dot turns green)"),
     ("", ""),
     ("N", "Full Name"),
     ("F", "First Name"),
@@ -145,10 +230,14 @@ def copy(label, value):
             app_name="qafill",
             timeout=3,
         )
-    keyboard.release("ctrl")
-    keyboard.release("shift")
+    # Release modifiers in case any are stuck, then send Ctrl+V to paste
+    for mod in (Key.ctrl_l, Key.ctrl_r, Key.shift_l, Key.shift_r):
+        _controller.release(mod)
     time.sleep(0.05)
-    keyboard.send("ctrl+v")
+    _controller.press(Key.ctrl_l)
+    _controller.press('v')
+    _controller.release('v')
+    _controller.release(Key.ctrl_l)
 
 
 def repeat_last():
@@ -169,32 +258,21 @@ def toggle_notifications():
 
 
 def disarm_mode():
-    global _armed, _arm_timer, _armed_hotkeys, _key_hook, _arm_last_time
+    global _armed, _arm_timer, _arm_last_time, _chord_map
     if not _armed:
         return
     log("disarm_mode called")
     _armed = False
     _arm_last_time = 0.0
+    _chord_map = {}
     icon.icon = make_icon_image(notifications_enabled, armed=False)
     if _arm_timer:
         _arm_timer.cancel()
         _arm_timer = None
-    for hk in _armed_hotkeys:
-        try:
-            keyboard.remove_hotkey(hk)
-        except Exception:
-            pass
-    _armed_hotkeys = []
-    if _key_hook:
-        try:
-            keyboard.unhook(_key_hook)
-        except Exception:
-            pass
-        _key_hook = None
 
 
 def arm_mode():
-    global _armed, _arm_timer, _armed_hotkeys, _key_hook, _arm_last_time
+    global _armed, _arm_timer, _arm_last_time, _chord_map
     log(f"arm_mode called, _armed={_armed}")
     if _armed:
         disarm_mode()
@@ -207,8 +285,7 @@ def arm_mode():
     _armed = True
     icon.icon = make_icon_image(notifications_enabled, armed=True)
 
-    # Build chord map now so card/custom values are current
-    chord_map = {
+    _chord_map.update({
         "n": lambda: copy("Name",       fake.name()),
         "f": lambda: copy("First Name", fake.first_name()),
         "l": lambda: copy("Last Name",  fake.last_name()),
@@ -219,35 +296,16 @@ def arm_mode():
         "c": lambda: copy("Card #",     fake.credit_card_number()),
         "r": repeat_last,
         "t": toggle_notifications,
-    }
+    })
     for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
-        chord_map[str(i)] = lambda t=card_type, n=number: copy(t, n)
+        _chord_map[str(i)] = lambda t=card_type, n=number: copy(t, n)
     for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
-        chord_map[str(i)] = lambda l=label, v=value: copy(l, v)
-
-    # Register chord keys only while armed
-    for key, action in chord_map.items():
-        hk = keyboard.add_hotkey(
-            key,
-            lambda a=action: threading.Thread(target=lambda: (disarm_mode(), a()), daemon=True).start(),
-            suppress=True,
-        )
-        _armed_hotkeys.append(hk)
+        _chord_map[str(i)] = lambda l=label, v=value: copy(l, v)
 
     # Auto-disarm after timeout
     _arm_timer = threading.Timer(ARM_TIMEOUT, disarm_mode)
     _arm_timer.daemon = True
     _arm_timer.start()
-
-    # Disarm on any non-chord, non-modifier key press.
-    # Delayed 300ms so the ARM_KEY events clear before the hook activates.
-    def _install_key_hook():
-        global _key_hook
-        time.sleep(0.3)
-        if _armed:
-            _key_hook = keyboard.hook(_disarm_on_any_key)
-            log("key hook installed")
-    threading.Thread(target=_install_key_hook, daemon=True).start()
 
 
 def show_hotkeys_window():
@@ -281,6 +339,12 @@ def show_hotkeys_window():
     win.mainloop()
 
 
+def _on_exit(tray_icon, item):
+    if _listener:
+        _listener.stop()
+    tray_icon.stop()
+
+
 def build_menu():
     return pystray.Menu(
         pystray.MenuItem(
@@ -293,15 +357,20 @@ def build_menu():
             lambda icon, item: threading.Thread(target=show_hotkeys_window, daemon=True).start(),
         ),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Exit", lambda icon, item: icon.stop()),
+        pystray.MenuItem("Exit", _on_exit),
     )
 
 
 icon = None
 
 def main():
-    global icon
-    keyboard.add_hotkey(ARM_KEY, arm_mode, suppress=True)
+    global icon, _listener
+    _listener = Listener(
+        on_press=_on_press,
+        on_release=_on_release,
+        win32_event_filter=_win32_event_filter,
+    )
+    _listener.start()
     log("startup ok")
 
     # Run tray icon on main thread - keeps process alive

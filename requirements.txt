@@ -1,6 +1,6 @@
 faker
 pyperclip
-keyboard
+pynput
 plyer
 pystray
 Pillow

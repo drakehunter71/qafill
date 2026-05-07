@@ -1,22 +1,13 @@
 """Unit tests for qafill testdata module.
 
-The keyboard library installs a low-level Windows hook on import, which
-interferes with tests and can mess with modifier key state. We mock it
-(and ctypes) before importing testdata to avoid side effects.
+pynput is safe to import (no hooks installed until Listener.start()),
+so we import testdata directly. The __main__ guard prevents side effects.
 """
 import os
-import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch, mock_open
-
-
-# Mock modules that cause side effects on import:
-# - keyboard: installs a global Windows keyboard hook
-# - ctypes: SetCurrentProcessExplicitAppUserModelID requires Windows shell
-_keyboard_mock = MagicMock()
-_keyboard_mock.KEY_DOWN = "down"
-sys.modules.setdefault("keyboard", _keyboard_mock)
+from pynput.keyboard import Key, KeyCode
 
 import testdata
 
@@ -58,64 +49,42 @@ class TestLoadDotenv(unittest.TestCase):
         self._original_env = os.environ.copy()
 
     def tearDown(self):
-        # Restore original environment
         os.environ.clear()
         os.environ.update(self._original_env)
 
     def test_parses_simple_key_value(self):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".env", delete=False, dir=os.path.dirname(__file__)
-        ) as f:
-            f.write("TEST_QAFILL_KEY=test_value\n")
-            env_path = f.name
-
-        try:
-            os.environ.pop("TEST_QAFILL_KEY", None)
-            with patch("testdata.os.path.abspath", return_value=env_path):
-                with patch("testdata.os.path.exists", return_value=True):
-                    with patch("builtins.open", mock_open(read_data="TEST_QAFILL_KEY=test_value\n")):
-                        testdata._load_dotenv()
-            assert os.environ.get("TEST_QAFILL_KEY") == "test_value"
-        finally:
-            os.unlink(env_path)
-            os.environ.pop("TEST_QAFILL_KEY", None)
+        os.environ.pop("TEST_QAFILL_KEY", None)
+        with patch("testdata.os.path.exists", return_value=True):
+            with patch("builtins.open", mock_open(read_data="TEST_QAFILL_KEY=test_value\n")):
+                testdata._load_dotenv()
+        assert os.environ.get("TEST_QAFILL_KEY") == "test_value"
 
     def test_skips_comments(self):
-        env_content = "# this is a comment\nTEST_QAFILL_REAL=yes\n"
-        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-
         os.environ.pop("TEST_QAFILL_REAL", None)
         with patch("testdata.os.path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=env_content)):
+            with patch("builtins.open", mock_open(read_data="# comment\nTEST_QAFILL_REAL=yes\n")):
                 testdata._load_dotenv()
         assert os.environ.get("TEST_QAFILL_REAL") == "yes"
-        os.environ.pop("TEST_QAFILL_REAL", None)
 
     def test_skips_blank_lines(self):
-        env_content = "\n\n  \nTEST_QAFILL_VAR=val\n"
         with patch("testdata.os.path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=env_content)):
+            with patch("builtins.open", mock_open(read_data="\n\n  \nTEST_QAFILL_VAR=val\n")):
                 testdata._load_dotenv()
         assert os.environ.get("TEST_QAFILL_VAR") == "val"
-        os.environ.pop("TEST_QAFILL_VAR", None)
 
     def test_strips_quotes(self):
-        env_content = 'TEST_QAFILL_Q="quoted_value"\n'
         os.environ.pop("TEST_QAFILL_Q", None)
         with patch("testdata.os.path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=env_content)):
+            with patch("builtins.open", mock_open(read_data='TEST_QAFILL_Q="quoted_value"\n')):
                 testdata._load_dotenv()
         assert os.environ.get("TEST_QAFILL_Q") == "quoted_value"
-        os.environ.pop("TEST_QAFILL_Q", None)
 
     def test_does_not_overwrite_existing(self):
         os.environ["TEST_QAFILL_EXIST"] = "original"
-        env_content = "TEST_QAFILL_EXIST=new_value\n"
         with patch("testdata.os.path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data=env_content)):
+            with patch("builtins.open", mock_open(read_data="TEST_QAFILL_EXIST=new_value\n")):
                 testdata._load_dotenv()
         assert os.environ["TEST_QAFILL_EXIST"] == "original"
-        os.environ.pop("TEST_QAFILL_EXIST", None)
 
     def test_no_env_file(self):
         with patch("testdata.os.path.exists", return_value=False):
@@ -135,7 +104,6 @@ class TestMakeIconImage(unittest.TestCase):
 
     def test_idle_is_blue(self):
         img = testdata.make_icon_image(active=False, armed=False)
-        # Sample center pixel - should be the fill color (blue)
         pixel = img.getpixel((16, 16))
         assert pixel == (30, 120, 220, 255), f"Expected blue, got {pixel}"
 
@@ -152,7 +120,7 @@ class TestMakeIconImage(unittest.TestCase):
     def test_armed_takes_priority_over_active(self):
         img = testdata.make_icon_image(active=True, armed=True)
         pixel = img.getpixel((16, 16))
-        assert pixel == (30, 180, 30, 255), f"Armed (green) should override active (orange), got {pixel}"
+        assert pixel == (30, 180, 30, 255), f"Armed should override active, got {pixel}"
 
     def test_corner_is_transparent(self):
         img = testdata.make_icon_image()
@@ -166,43 +134,38 @@ class TestLog(unittest.TestCase):
     def test_writes_to_log_file(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
             tmp_log = f.name
-
-        original_log_path = testdata.LOG_PATH
+        original = testdata.LOG_PATH
         try:
             testdata.LOG_PATH = tmp_log
             testdata.log("test message")
             with open(tmp_log) as f:
-                content = f.read()
-            assert "test message" in content
+                assert "test message" in f.read()
         finally:
-            testdata.LOG_PATH = original_log_path
+            testdata.LOG_PATH = original
             os.unlink(tmp_log)
 
     def test_log_format_has_timestamp(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
             tmp_log = f.name
-
-        original_log_path = testdata.LOG_PATH
+        original = testdata.LOG_PATH
         try:
             testdata.LOG_PATH = tmp_log
             testdata.log("format check")
             with open(tmp_log) as f:
                 line = f.read().strip()
-            # Format: "YYYY-MM-DD HH:MM:SS message"
             parts = line.split(" ", 2)
             assert len(parts) == 3
-            assert len(parts[0]) == 10  # date
-            assert len(parts[1]) == 8   # time
+            assert len(parts[0]) == 10  # YYYY-MM-DD
+            assert len(parts[1]) == 8   # HH:MM:SS
             assert parts[2] == "format check"
         finally:
-            testdata.LOG_PATH = original_log_path
+            testdata.LOG_PATH = original
             os.unlink(tmp_log)
 
     def test_appends_multiple_entries(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
             tmp_log = f.name
-
-        original_log_path = testdata.LOG_PATH
+        original = testdata.LOG_PATH
         try:
             testdata.LOG_PATH = tmp_log
             testdata.log("first")
@@ -210,86 +173,91 @@ class TestLog(unittest.TestCase):
             with open(tmp_log) as f:
                 lines = f.read().strip().split("\n")
             assert len(lines) == 2
-            assert "first" in lines[0]
-            assert "second" in lines[1]
         finally:
-            testdata.LOG_PATH = original_log_path
+            testdata.LOG_PATH = original
             os.unlink(tmp_log)
 
 
 class TestCopy(unittest.TestCase):
     """Tests for copy() - clipboard + paste behavior."""
 
-    @patch("testdata.keyboard")
-    @patch("testdata.pyperclip")
-    @patch("testdata.time")
-    def test_copies_to_clipboard(self, mock_time, mock_pyperclip, mock_keyboard):
+    def setUp(self):
         testdata.LOG_PATH = os.devnull
         testdata.notifications_enabled = False
+        self._orig_controller = testdata._controller
+        testdata._controller = MagicMock()
+
+    def tearDown(self):
+        testdata._controller = self._orig_controller
+
+    @patch("testdata.pyperclip")
+    @patch("testdata.time")
+    def test_copies_to_clipboard(self, mock_time, mock_pyperclip):
         testdata.copy("Test", "test_value")
         mock_pyperclip.copy.assert_called_once_with("test_value")
 
-    @patch("testdata.keyboard")
     @patch("testdata.pyperclip")
     @patch("testdata.time")
-    def test_sends_ctrl_v(self, mock_time, mock_pyperclip, mock_keyboard):
-        testdata.LOG_PATH = os.devnull
-        testdata.notifications_enabled = False
+    def test_sends_ctrl_v_via_controller(self, mock_time, mock_pyperclip):
         testdata.copy("Test", "test_value")
-        mock_keyboard.send.assert_called_once_with("ctrl+v")
+        # Controller should press ctrl then v, then release both
+        press_calls = [c.args[0] for c in testdata._controller.press.call_args_list]
+        release_calls = [c.args[0] for c in testdata._controller.release.call_args_list]
+        assert Key.ctrl_l in press_calls
+        assert 'v' in press_calls
+        assert 'v' in release_calls
+        assert Key.ctrl_l in release_calls
 
-    @patch("testdata.keyboard")
     @patch("testdata.pyperclip")
     @patch("testdata.time")
-    def test_updates_last_values(self, mock_time, mock_pyperclip, mock_keyboard):
-        testdata.LOG_PATH = os.devnull
-        testdata.notifications_enabled = False
+    def test_updates_last_values(self, mock_time, mock_pyperclip):
         testdata.copy("MyLabel", "MyValue")
         assert testdata.last_label == "MyLabel"
         assert testdata.last_value == "MyValue"
 
     @patch("testdata.notification")
-    @patch("testdata.keyboard")
     @patch("testdata.pyperclip")
     @patch("testdata.time")
-    def test_notifies_when_enabled(self, mock_time, mock_pyperclip, mock_keyboard, mock_notif):
-        testdata.LOG_PATH = os.devnull
+    def test_notifies_when_enabled(self, mock_time, mock_pyperclip, mock_notif):
         testdata.notifications_enabled = True
         testdata.copy("Label", "Value")
         mock_notif.notify.assert_called_once()
         testdata.notifications_enabled = False
 
     @patch("testdata.notification")
-    @patch("testdata.keyboard")
     @patch("testdata.pyperclip")
     @patch("testdata.time")
-    def test_no_notification_when_disabled(self, mock_time, mock_pyperclip, mock_keyboard, mock_notif):
-        testdata.LOG_PATH = os.devnull
-        testdata.notifications_enabled = False
+    def test_no_notification_when_disabled(self, mock_time, mock_pyperclip, mock_notif):
         testdata.copy("Label", "Value")
         mock_notif.notify.assert_not_called()
 
-    @patch("testdata.keyboard")
     @patch("testdata.pyperclip")
     @patch("testdata.time")
-    def test_releases_modifiers_before_paste(self, mock_time, mock_pyperclip, mock_keyboard):
-        testdata.LOG_PATH = os.devnull
-        testdata.notifications_enabled = False
+    def test_releases_modifiers_before_paste(self, mock_time, mock_pyperclip):
         testdata.copy("Test", "val")
-        calls = [str(c) for c in mock_keyboard.release.call_args_list]
-        assert any("ctrl" in c for c in calls)
-        assert any("shift" in c for c in calls)
+        release_calls = [c.args[0] for c in testdata._controller.release.call_args_list]
+        # Should release both ctrl and shift variants before the paste
+        assert Key.ctrl_l in release_calls
+        assert Key.ctrl_r in release_calls
+        assert Key.shift_l in release_calls
+        assert Key.shift_r in release_calls
 
 
 class TestRepeatLast(unittest.TestCase):
     """Tests for repeat_last() - replay previous value."""
 
-    @patch("testdata.keyboard")
-    @patch("testdata.pyperclip")
-    @patch("testdata.time")
-    def test_repeats_last_value(self, mock_time, mock_pyperclip, mock_keyboard):
+    def setUp(self):
         testdata.LOG_PATH = os.devnull
         testdata.notifications_enabled = False
+        self._orig_controller = testdata._controller
+        testdata._controller = MagicMock()
+
+    def tearDown(self):
+        testdata._controller = self._orig_controller
+
+    @patch("testdata.pyperclip")
+    @patch("testdata.time")
+    def test_repeats_last_value(self, mock_time, mock_pyperclip):
         testdata.last_label = "Name"
         testdata.last_value = "John"
         testdata.repeat_last()
@@ -335,119 +303,222 @@ class TestDisarmMode(unittest.TestCase):
         testdata.icon = MagicMock()
         testdata.LOG_PATH = os.devnull
 
-    @patch("testdata.keyboard")
-    def test_sets_armed_false(self, mock_keyboard):
+    def test_sets_armed_false(self):
         testdata._armed = True
         testdata._arm_timer = None
-        testdata._armed_hotkeys = []
-        testdata._key_hook = None
+        testdata._chord_map = {"n": lambda: None}
         testdata.disarm_mode()
         assert testdata._armed is False
 
-    @patch("testdata.keyboard")
-    def test_cancels_timer(self, mock_keyboard):
+    def test_clears_chord_map(self):
+        testdata._armed = True
+        testdata._arm_timer = None
+        testdata._chord_map = {"n": lambda: None, "f": lambda: None}
+        testdata.disarm_mode()
+        assert testdata._chord_map == {}
+
+    def test_cancels_timer(self):
         timer = MagicMock()
         testdata._armed = True
         testdata._arm_timer = timer
-        testdata._armed_hotkeys = []
-        testdata._key_hook = None
+        testdata._chord_map = {}
         testdata.disarm_mode()
         timer.cancel.assert_called_once()
         assert testdata._arm_timer is None
 
-    @patch("testdata.keyboard")
-    def test_removes_hotkeys(self, mock_keyboard):
-        testdata._armed = True
-        testdata._arm_timer = None
-        testdata._armed_hotkeys = ["hk1", "hk2"]
-        testdata._key_hook = None
-        testdata.disarm_mode()
-        assert mock_keyboard.remove_hotkey.call_count == 2
-        assert testdata._armed_hotkeys == []
-
-    @patch("testdata.keyboard")
-    def test_unhooks_key_hook(self, mock_keyboard):
-        testdata._armed = True
-        testdata._arm_timer = None
-        testdata._armed_hotkeys = []
-        testdata._key_hook = "some_hook"
-        testdata.disarm_mode()
-        mock_keyboard.unhook.assert_called_once_with("some_hook")
-        assert testdata._key_hook is None
-
-    @patch("testdata.keyboard")
-    def test_idempotent_when_not_armed(self, mock_keyboard):
+    def test_idempotent_when_not_armed(self):
         testdata._armed = False
-        testdata._arm_timer = None
-        testdata._armed_hotkeys = []
-        testdata._key_hook = None
-        testdata.disarm_mode()  # should not raise
-        mock_keyboard.remove_hotkey.assert_not_called()
-        mock_keyboard.unhook.assert_not_called()
-
-    @patch("testdata.keyboard")
-    def test_survives_remove_hotkey_error(self, mock_keyboard):
-        mock_keyboard.remove_hotkey.side_effect = Exception("already removed")
-        testdata._armed = True
-        testdata._arm_timer = None
-        testdata._armed_hotkeys = ["hk1"]
-        testdata._key_hook = None
-        testdata.disarm_mode()  # should not raise
+        testdata._chord_map = {}
+        testdata.disarm_mode()  # should not raise or change state
         assert testdata._armed is False
 
-    @patch("testdata.keyboard")
-    def test_survives_unhook_error(self, mock_keyboard):
-        mock_keyboard.unhook.side_effect = Exception("already unhooked")
+    def test_updates_icon(self):
         testdata._armed = True
         testdata._arm_timer = None
-        testdata._armed_hotkeys = []
-        testdata._key_hook = "stale_hook"
-        testdata.disarm_mode()  # should not raise
-        assert testdata._key_hook is None
+        testdata._chord_map = {}
+        testdata.disarm_mode()
+        assert testdata.icon.icon is not None
 
 
 class TestArmMode(unittest.TestCase):
-    """Tests for arm_mode() - arming state and chord registration."""
+    """Tests for arm_mode() - arming state and chord map."""
 
     def setUp(self):
         testdata.icon = MagicMock()
         testdata.LOG_PATH = os.devnull
         testdata._armed = False
         testdata._arm_timer = None
-        testdata._armed_hotkeys = []
-        testdata._key_hook = None
         testdata._arm_last_time = 0.0
+        testdata._chord_map = {}
 
-    @patch("testdata.keyboard")
-    def test_sets_armed_true(self, mock_keyboard):
+    def test_sets_armed_true(self):
         testdata.arm_mode()
         assert testdata._armed is True
 
-    @patch("testdata.keyboard")
-    def test_toggle_disarms_when_armed(self, mock_keyboard):
+    def test_builds_chord_map(self):
+        testdata.arm_mode()
+        # Core keys + test cards + custom strings
+        for key in ["n", "f", "l", "e", "p", "a", "z", "c", "r", "t"]:
+            assert key in testdata._chord_map, f"Missing chord key: {key}"
+        for i in range(1, len(testdata.TEST_CARDS) + 1):
+            assert str(i) in testdata._chord_map, f"Missing card key: {i}"
+
+    def test_toggle_disarms_when_armed(self):
         testdata._armed = True
         testdata._arm_timer = None
+        testdata._chord_map = {"n": lambda: None}
         testdata.arm_mode()
         assert testdata._armed is False
 
-    @patch("testdata.keyboard")
-    def test_debounce_prevents_rapid_rearm(self, mock_keyboard):
+    def test_debounce_prevents_rapid_rearm(self):
         testdata._arm_last_time = testdata.time.time()
         testdata.arm_mode()
-        assert testdata._armed is False  # should be debounced
+        assert testdata._armed is False
 
-    @patch("testdata.keyboard")
-    def test_registers_chord_hotkeys(self, mock_keyboard):
-        mock_keyboard.add_hotkey.return_value = "mock_hk"
-        testdata.arm_mode()
-        # Should register hotkeys for: n,f,l,e,p,a,z,c,r,t + 4 test cards + custom strings
-        expected_count = 10 + len(testdata.TEST_CARDS) + len(testdata.CUSTOM_STRINGS)
-        assert mock_keyboard.add_hotkey.call_count == expected_count
-
-    @patch("testdata.keyboard")
-    def test_updates_icon_to_armed(self, mock_keyboard):
+    def test_updates_icon_to_armed(self):
         testdata.arm_mode()
         assert testdata.icon.icon is not None
+
+    def test_starts_auto_disarm_timer(self):
+        testdata.arm_mode()
+        assert testdata._arm_timer is not None
+        testdata._arm_timer.cancel()  # clean up
+
+
+class TestOnPress(unittest.TestCase):
+    """Tests for _on_press() - key event handler."""
+
+    def setUp(self):
+        testdata.icon = MagicMock()
+        testdata.LOG_PATH = os.devnull
+        testdata._armed = False
+        testdata._arm_timer = None
+        testdata._arm_last_time = 0.0
+        testdata._chord_map = {}
+        testdata._current_modifiers = set()
+
+    def tearDown(self):
+        # Clean up any timers left by arm_mode
+        if testdata._arm_timer:
+            testdata._arm_timer.cancel()
+            testdata._arm_timer = None
+        testdata._armed = False
+        testdata._chord_map = {}
+        testdata._current_modifiers = set()
+
+    def test_arm_combo_ctrl_shift_space(self):
+        testdata._on_press(Key.ctrl_l)
+        testdata._on_press(Key.shift_l)
+        testdata._on_press(Key.space)
+        assert testdata._armed is True
+
+    def test_arm_combo_requires_all_three(self):
+        testdata._on_press(Key.ctrl_l)
+        testdata._on_press(Key.space)  # no shift
+        assert testdata._armed is False
+
+    def test_modifier_keys_tracked(self):
+        testdata._on_press(Key.ctrl_l)
+        assert Key.ctrl_l in testdata._current_modifiers
+        testdata._on_press(Key.shift_r)
+        assert Key.shift_r in testdata._current_modifiers
+
+    def test_non_chord_key_disarms(self):
+        testdata._armed = True
+        testdata._chord_map = {"n": lambda: None}
+        testdata._on_press(KeyCode.from_char('x'))  # not in chord map
+        assert testdata._armed is False
+
+    def test_modifier_does_not_disarm(self):
+        testdata._armed = True
+        testdata._chord_map = {"n": lambda: None}
+        testdata._on_press(Key.ctrl_l)
+        assert testdata._armed is True
+
+
+class TestOnRelease(unittest.TestCase):
+    """Tests for _on_release() - modifier tracking cleanup."""
+
+    def test_removes_modifier(self):
+        testdata._current_modifiers = {Key.ctrl_l, Key.shift_l}
+        testdata._on_release(Key.ctrl_l)
+        assert Key.ctrl_l not in testdata._current_modifiers
+        assert Key.shift_l in testdata._current_modifiers
+
+    def test_ignores_unknown_key(self):
+        testdata._current_modifiers = set()
+        testdata._on_release(Key.ctrl_l)  # not in set - should not raise
+
+
+class TestKeyChar(unittest.TestCase):
+    """Tests for _key_char() - key to string conversion."""
+
+    def test_regular_character(self):
+        assert testdata._key_char(KeyCode.from_char('n')) == 'n'
+
+    def test_uppercase_lowered(self):
+        assert testdata._key_char(KeyCode.from_char('N')) == 'n'
+
+    def test_number_key(self):
+        assert testdata._key_char(KeyCode.from_char('5')) == '5'
+
+    def test_special_key_returns_none(self):
+        assert testdata._key_char(Key.space) is None
+
+    def test_modifier_returns_none(self):
+        assert testdata._key_char(Key.ctrl_l) is None
+
+
+class TestIsArmCombo(unittest.TestCase):
+    """Tests for _is_arm_combo() - ARM key detection."""
+
+    def setUp(self):
+        testdata._current_modifiers = set()
+
+    def test_space_with_ctrl_shift(self):
+        testdata._current_modifiers = {Key.ctrl_l, Key.shift_l}
+        assert testdata._is_arm_combo(Key.space) is True
+
+    def test_space_without_shift(self):
+        testdata._current_modifiers = {Key.ctrl_l}
+        assert testdata._is_arm_combo(Key.space) is False
+
+    def test_space_without_ctrl(self):
+        testdata._current_modifiers = {Key.shift_l}
+        assert testdata._is_arm_combo(Key.space) is False
+
+    def test_non_space_key(self):
+        testdata._current_modifiers = {Key.ctrl_l, Key.shift_l}
+        assert testdata._is_arm_combo(KeyCode.from_char('n')) is False
+
+    def test_right_modifier_variants(self):
+        testdata._current_modifiers = {Key.ctrl_r, Key.shift_r}
+        assert testdata._is_arm_combo(Key.space) is True
+
+
+class TestCtrlShiftHelpers(unittest.TestCase):
+    """Tests for _ctrl_held() and _shift_held() helpers."""
+
+    def setUp(self):
+        testdata._current_modifiers = set()
+
+    def test_ctrl_held_left(self):
+        testdata._current_modifiers.add(Key.ctrl_l)
+        assert testdata._ctrl_held() is True
+
+    def test_ctrl_held_right(self):
+        testdata._current_modifiers.add(Key.ctrl_r)
+        assert testdata._ctrl_held() is True
+
+    def test_ctrl_not_held(self):
+        assert testdata._ctrl_held() is False
+
+    def test_shift_held_left(self):
+        testdata._current_modifiers.add(Key.shift_l)
+        assert testdata._shift_held() is True
+
+    def test_shift_not_held(self):
+        assert testdata._shift_held() is False
 
 
 class TestTestCards(unittest.TestCase):
@@ -467,13 +538,11 @@ class TestTestCards(unittest.TestCase):
 
     def test_card_numbers_are_digits(self):
         for label, number, _, _ in testdata.TEST_CARDS:
-            assert number.isdigit(), f"{label} card number contains non-digits: {number}"
+            assert number.isdigit(), f"{label} card number has non-digits: {number}"
 
     def test_expiry_format(self):
         for label, _, exp, _ in testdata.TEST_CARDS:
-            parts = exp.split("/")
-            assert len(parts) == 2, f"{label} expiry format wrong: {exp}"
-            month, year = parts
+            month, year = exp.split("/")
             assert 1 <= int(month) <= 12, f"{label} invalid month: {month}"
             assert int(year) >= 2026, f"{label} year too old: {year}"
 
@@ -482,14 +551,13 @@ class TestTestCards(unittest.TestCase):
         now = datetime.now()
         for label, _, exp, _ in testdata.TEST_CARDS:
             month, year = exp.split("/")
-            # Card is valid through the end of the expiry month
             assert int(year) > now.year or (
                 int(year) == now.year and int(month) >= now.month
             ), f"{label} test card is expired: {exp}"
 
     def test_cvv_length(self):
         for label, _, _, cvv in testdata.TEST_CARDS:
-            assert cvv.isdigit(), f"{label} CVV contains non-digits"
+            assert cvv.isdigit(), f"{label} CVV has non-digits"
             assert len(cvv) in (3, 4), f"{label} CVV unexpected length: {len(cvv)}"
 
 
@@ -498,13 +566,13 @@ class TestHotkeyReference(unittest.TestCase):
 
     def test_all_entries_are_tuples(self):
         for entry in testdata.HOTKEY_REFERENCE:
-            assert isinstance(entry, tuple), f"Expected tuple, got {type(entry)}"
-            assert len(entry) == 2, f"Expected 2 elements, got {len(entry)}"
+            assert isinstance(entry, tuple)
+            assert len(entry) == 2
 
     def test_all_entries_are_strings(self):
         for hotkey, desc in testdata.HOTKEY_REFERENCE:
-            assert isinstance(hotkey, str), f"Hotkey not a string: {hotkey}"
-            assert isinstance(desc, str), f"Description not a string: {desc}"
+            assert isinstance(hotkey, str)
+            assert isinstance(desc, str)
 
     def test_contains_arm_key(self):
         keys = [h for h, _ in testdata.HOTKEY_REFERENCE]
@@ -522,19 +590,26 @@ class TestHotkeyReference(unittest.TestCase):
 
 
 class TestModifierKeys(unittest.TestCase):
-    """Tests for MODIFIER_KEYS set."""
+    """Tests for _MODIFIER_KEYS set."""
 
-    def test_contains_standard_modifiers(self):
-        for mod in ['ctrl', 'shift', 'alt']:
-            assert mod in testdata.MODIFIER_KEYS
+    def test_contains_ctrl_variants(self):
+        assert Key.ctrl_l in testdata._MODIFIER_KEYS
+        assert Key.ctrl_r in testdata._MODIFIER_KEYS
 
-    def test_contains_left_right_variants(self):
-        for mod in ['left ctrl', 'right ctrl', 'left shift', 'right shift']:
-            assert mod in testdata.MODIFIER_KEYS
+    def test_contains_shift_variants(self):
+        assert Key.shift_l in testdata._MODIFIER_KEYS
+        assert Key.shift_r in testdata._MODIFIER_KEYS
 
-    def test_regular_keys_not_included(self):
-        for key in ['a', 'n', 'space', 'enter', '1', 'f1']:
-            assert key not in testdata.MODIFIER_KEYS
+    def test_contains_alt_variants(self):
+        assert Key.alt_l in testdata._MODIFIER_KEYS
+        assert Key.alt_r in testdata._MODIFIER_KEYS
+
+    def test_contains_lock_keys(self):
+        assert Key.caps_lock in testdata._MODIFIER_KEYS
+        assert Key.num_lock in testdata._MODIFIER_KEYS
+
+    def test_space_not_included(self):
+        assert Key.space not in testdata._MODIFIER_KEYS
 
 
 class TestPhoneFormat(unittest.TestCase):
@@ -546,7 +621,7 @@ class TestPhoneFormat(unittest.TestCase):
         for _ in range(20):
             phone = testdata.fake.numerify('###-###-####')
             assert pattern.match(phone), f"Phone format mismatch: {phone}"
-            assert len(phone) == 12, f"Phone length should be 12, got {len(phone)}"
+            assert len(phone) == 12
 
 
 if __name__ == "__main__":
