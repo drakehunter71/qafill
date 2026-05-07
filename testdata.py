@@ -62,6 +62,20 @@ HOTKEYS = {
     "ctrl+alt+c": ("Card #",     lambda: fake.credit_card_number()),
 }
 
+# Load .env into os.environ before importing local.py so lambdas can use os.environ.get()
+def _load_dotenv():
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, val = line.partition("=")
+                os.environ.setdefault(key.strip(), val.strip().strip('"').strip("'"))
+
+_load_dotenv()
+
 # Local custom strings - Ctrl+Alt+5 through Ctrl+Alt+8
 # Create local.py (gitignored) using local.example.py as a template
 try:
