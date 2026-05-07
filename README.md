@@ -40,21 +40,21 @@ A blue dot appears in the system tray overflow (`^` near the clock) to confirm i
 
 | Hotkey | Output |
 |--------|--------|
-| `Ctrl+Space, N` | Full name |
-| `Ctrl+Space, F` | First name |
-| `Ctrl+Space, L` | Last name |
-| `Ctrl+Space, E` | Email address |
-| `Ctrl+Space, P` | Phone number |
-| `Ctrl+Space, A` | Full address (single line) |
-| `Ctrl+Space, Z` | ZIP code |
-| `Ctrl+Space, C` | Random credit card number |
-| `Ctrl+Space, 1` | Test card 1 |
-| `Ctrl+Space, 2` | Test card 2 |
-| `Ctrl+Space, 3` | Test card 3 |
-| `Ctrl+Space, 4` | Test card 4 |
-| `Ctrl+Space, 5-8` | Custom strings (local.py) |
-| `Ctrl+Space, R` | Repeat last generated value |
-| `Ctrl+Space, T` | Toggle toast notifications on/off |
+| `Ctrl+Shift+Alt+ N` | Full name |
+| `Ctrl+Shift+Alt+ F` | First name |
+| `Ctrl+Shift+Alt+ L` | Last name |
+| `Ctrl+Shift+Alt+ E` | Email address |
+| `Ctrl+Shift+Alt+ P` | Phone number |
+| `Ctrl+Shift+Alt+ A` | Full address (single line) |
+| `Ctrl+Shift+Alt+ Z` | ZIP code |
+| `Ctrl+Shift+Alt+ C` | Random credit card number |
+| `Ctrl+Shift+Alt+ 1` | Test card 1 |
+| `Ctrl+Shift+Alt+ 2` | Test card 2 |
+| `Ctrl+Shift+Alt+ 3` | Test card 3 |
+| `Ctrl+Shift+Alt+ 4` | Test card 4 |
+| `Ctrl+Shift+Alt+ 5-8` | Custom strings (local.py) |
+| `Ctrl+Shift+Alt+ R` | Repeat last generated value |
+| `Ctrl+Shift+Alt+ T` | Toggle toast notifications on/off |
 
 All hotkeys copy to clipboard and auto-paste into the focused field.
 
@@ -70,7 +70,7 @@ Right-click to toggle notifications, open the hotkey reference window, or exit.
 
 ## Local Custom Strings
 
-Create `local.py` (gitignored) using `local.example.py` as a template. Mapped to `Ctrl+Space,+5` through `Ctrl+Space,+8`. Values resolve once at startup.
+Create `local.py` (gitignored) using `local.example.py` as a template. Mapped to `Ctrl+Shift+Alt++5` through `Ctrl+Shift+Alt++8`. Values resolve once at startup.
 
 Values can be a **literal string** or any **callable** - use a lambda to pull from any source:
 
@@ -131,4 +131,4 @@ Full reference: https://faker.readthedocs.io
 ## Notes
 
 - The `keyboard` library uses a low-level Windows hook. In rare cases it may not capture hotkeys inside windows running as Administrator.
-- Notifications are off by default. Turn on with `Ctrl+Space,+T` when debugging.
+- Notifications are off by default. Turn on with `Ctrl+Shift+Alt++T` when debugging.

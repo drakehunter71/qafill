@@ -42,7 +42,7 @@ def resolve(value):
         return f"[error: {e}]"
 
 # Payment processor test cards
-# Ctrl+Space, 1 through Ctrl+Space, 4
+# Ctrl+Shift+Alt+1 through Ctrl+Shift+Alt+4
 # Add or swap out cards for your processor - format: (label, number, expiry, cvv)
 TEST_CARDS = [
     ("Visa",        "4263982640269299", "02/2026", "837"),
@@ -52,14 +52,14 @@ TEST_CARDS = [
 ]
 
 HOTKEYS = {
-    "ctrl+space, n": ("Name",       lambda: fake.name()),
-    "ctrl+space, f": ("First Name", lambda: fake.first_name()),
-    "ctrl+space, l": ("Last Name",  lambda: fake.last_name()),
-    "ctrl+space, e": ("Email",      lambda: fake.email()),
-    "ctrl+space, p": ("Phone",      lambda: fake.phone_number()),
-    "ctrl+space, a": ("Address",    lambda: fake.address().replace("\n", ", ")),
-    "ctrl+space, z": ("ZIP",        lambda: fake.zipcode()),
-    "ctrl+space, c": ("Card #",     lambda: fake.credit_card_number()),
+    "ctrl+shift+alt+n": ("Name",       lambda: fake.name()),
+    "ctrl+shift+alt+f": ("First Name", lambda: fake.first_name()),
+    "ctrl+shift+alt+l": ("Last Name",  lambda: fake.last_name()),
+    "ctrl+shift+alt+e": ("Email",      lambda: fake.email()),
+    "ctrl+shift+alt+p": ("Phone",      lambda: fake.phone_number()),
+    "ctrl+shift+alt+a": ("Address",    lambda: fake.address().replace("\n", ", ")),
+    "ctrl+shift+alt+z": ("ZIP",        lambda: fake.zipcode()),
+    "ctrl+shift+alt+c": ("Card #",     lambda: fake.credit_card_number()),
 }
 
 # Load .env into os.environ before importing local.py so lambdas can use os.environ.get()
@@ -76,7 +76,7 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# Local custom strings - Ctrl+Space, 5 through Ctrl+Space, 8
+# Local custom strings - Ctrl+Shift+Alt+5 through Ctrl+Shift+Alt+8
 # Create local.py (gitignored) using local.example.py as a template
 try:
     from local import CUSTOM_STRINGS
@@ -85,23 +85,23 @@ except ImportError:
     CUSTOM_STRINGS = []
 
 HOTKEY_REFERENCE = [
-    ("Ctrl+Space, N", "Full Name"),
-    ("Ctrl+Space, F", "First Name"),
-    ("Ctrl+Space, L", "Last Name"),
-    ("Ctrl+Space, E", "Email"),
-    ("Ctrl+Space, P", "Phone"),
-    ("Ctrl+Space, A", "Address"),
-    ("Ctrl+Space, Z", "ZIP Code"),
-    ("Ctrl+Space, C", "Random Card #"),
+    ("Ctrl+Shift+Alt+N", "Full Name"),
+    ("Ctrl+Shift+Alt+F", "First Name"),
+    ("Ctrl+Shift+Alt+L", "Last Name"),
+    ("Ctrl+Shift+Alt+E", "Email"),
+    ("Ctrl+Shift+Alt+P", "Phone"),
+    ("Ctrl+Shift+Alt+A", "Address"),
+    ("Ctrl+Shift+Alt+Z", "ZIP Code"),
+    ("Ctrl+Shift+Alt+C", "Random Card #"),
 ] + [
-    (f"Ctrl+Space, {i}", f"{card[0]} test card")
+    (f"Ctrl+Shift+Alt+{i}", f"{card[0]} test card")
     for i, card in enumerate(TEST_CARDS, start=1)
 ] + [
-    (f"Ctrl+Space, {i}", label)
+    (f"Ctrl+Shift+Alt+{i}", label)
     for i, (label, _) in enumerate(CUSTOM_STRINGS, start=5)
 ] + [
-    ("Ctrl+Space, R", "Repeat Last"),
-    ("Ctrl+Space, T", "Toggle Notifications"),
+    ("Ctrl+Shift+Alt+R", "Repeat Last"),
+    ("Ctrl+Shift+Alt+T", "Toggle Notifications"),
 ]
 
 
@@ -125,6 +125,8 @@ def copy(label, value):
             timeout=3,
         )
     keyboard.release("ctrl")
+    keyboard.release("shift")
+    keyboard.release("alt")
     time.sleep(0.05)
     keyboard.send("ctrl+v")
 
@@ -189,21 +191,21 @@ def build_menu():
 
 
 # Register hotkeys
-keyboard.add_hotkey("ctrl+space, t", toggle_notifications)
-keyboard.add_hotkey("ctrl+space, r", repeat_last)
+keyboard.add_hotkey("ctrl+shift+alt+t", toggle_notifications)
+keyboard.add_hotkey("ctrl+shift+alt+r", repeat_last)
 
 for hotkey, (label, generator) in HOTKEYS.items():
     keyboard.add_hotkey(hotkey, lambda lbl=label, gen=generator: copy(lbl, gen()))
 
 for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
     keyboard.add_hotkey(
-        f"ctrl+space, {i}",
+        f"ctrl+shift+alt+{i}",
         lambda t=card_type, n=number: copy(f"{t}", n),
     )
 
 for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
     keyboard.add_hotkey(
-        f"ctrl+space, {i}",
+        f"ctrl+shift+alt+{i}",
         lambda lbl=label, val=value: copy(lbl, val),
     )
 
