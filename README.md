@@ -72,7 +72,7 @@ Right-click to toggle notifications, open the hotkey reference window, or exit.
 
 ## Local Custom Strings
 
-Create `local.py` (gitignored) using `local.example.py` as a template. Mapped to `Ctrl+Shift+Alt++5` through `Ctrl+Shift+Alt++8`. Values resolve once at startup.
+Create `local.py` (gitignored) using `local.example.py` as a template. Mapped to keys `5` through `8` while armed. Values resolve once at startup.
 
 Values can be a **literal string** or any **callable** - use a lambda to pull from any source:
 
@@ -133,4 +133,4 @@ Full reference: https://faker.readthedocs.io
 ## Notes
 
 - The `keyboard` library uses a low-level Windows hook. In rare cases it may not capture hotkeys inside windows running as Administrator.
-- Notifications are off by default. Turn on with `Ctrl+Shift+Alt++T` when debugging.
+- Notifications are off by default. Arm then press `T` to toggle, or right-click the tray icon.

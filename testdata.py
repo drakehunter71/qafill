@@ -35,6 +35,7 @@ _armed = False
 _arm_timer = None
 _armed_hotkeys = []
 _key_hook = None
+_arm_last_time = 0.0
 
 MODIFIER_KEYS = {
     'ctrl', 'shift', 'alt',
@@ -68,10 +69,10 @@ def resolve(value):
 # Payment processor test cards - mapped to chord keys 1-4
 # Add or swap out cards for your processor - format: (label, number, expiry, cvv)
 TEST_CARDS = [
-    ("Visa",        "4263982640269299", "02/2026", "837"),
-    ("Mastercard",  "5425233430109903", "02/2026", "234"),
-    ("Amex",        "374251018720955",  "02/2026", "1234"),
-    ("Discover",    "6011000000000004", "02/2026", "123"),
+    ("Visa",        "4263982640269299", "12/2028", "837"),
+    ("Mastercard",  "5425233430109903", "12/2028", "234"),
+    ("Amex",        "374251018720955",  "12/2028", "1234"),
+    ("Discover",    "6011000000000004", "12/2028", "123"),
 ]
 
 # Load .env into os.environ before importing local.py so lambdas can use os.environ.get()
@@ -134,6 +135,7 @@ def make_icon_image(active=False, armed=False):
 
 def copy(label, value):
     global last_label, last_value
+    log(f"copy: {label} ({len(value)} chars)")
     last_label, last_value = label, value
     pyperclip.copy(value)
     if notifications_enabled:
@@ -143,6 +145,8 @@ def copy(label, value):
             app_name="qafill",
             timeout=3,
         )
+    keyboard.release("ctrl")
+    keyboard.release("shift")
     time.sleep(0.05)
     keyboard.send("ctrl+v")
 
@@ -165,8 +169,12 @@ def toggle_notifications():
 
 
 def disarm_mode():
-    global _armed, _arm_timer, _armed_hotkeys, _key_hook
+    global _armed, _arm_timer, _armed_hotkeys, _key_hook, _arm_last_time
+    if not _armed:
+        return
+    log("disarm_mode called")
     _armed = False
+    _arm_last_time = 0.0
     icon.icon = make_icon_image(notifications_enabled, armed=False)
     if _arm_timer:
         _arm_timer.cancel()
@@ -178,15 +186,24 @@ def disarm_mode():
             pass
     _armed_hotkeys = []
     if _key_hook:
-        keyboard.unhook(_key_hook)
+        try:
+            keyboard.unhook(_key_hook)
+        except Exception:
+            pass
         _key_hook = None
 
 
 def arm_mode():
-    global _armed, _arm_timer, _armed_hotkeys
+    global _armed, _arm_timer, _armed_hotkeys, _key_hook, _arm_last_time
+    log(f"arm_mode called, _armed={_armed}")
     if _armed:
         disarm_mode()
         return
+    now = time.time()
+    if now - _arm_last_time < 0.5:
+        log(f"arm_mode debounced ({now - _arm_last_time:.3f}s since last arm)")
+        return
+    _arm_last_time = now
     _armed = True
     icon.icon = make_icon_image(notifications_enabled, armed=True)
 
@@ -196,7 +213,7 @@ def arm_mode():
         "f": lambda: copy("First Name", fake.first_name()),
         "l": lambda: copy("Last Name",  fake.last_name()),
         "e": lambda: copy("Email",      fake.email()),
-        "p": lambda: copy("Phone",      fake.phone_number()),
+        "p": lambda: copy("Phone",      fake.numerify('###-###-####')),
         "a": lambda: copy("Address",    fake.address().replace("\n", ", ")),
         "z": lambda: copy("ZIP",        fake.zipcode()),
         "c": lambda: copy("Card #",     fake.credit_card_number()),
@@ -222,9 +239,15 @@ def arm_mode():
     _arm_timer.daemon = True
     _arm_timer.start()
 
-    # Disarm on any non-chord, non-modifier key press
-    # Registered after chord hotkeys so suppressed chord keys don't reach this hook
-    _key_hook = keyboard.hook(_disarm_on_any_key)
+    # Disarm on any non-chord, non-modifier key press.
+    # Delayed 300ms so the ARM_KEY events clear before the hook activates.
+    def _install_key_hook():
+        global _key_hook
+        time.sleep(0.3)
+        if _armed:
+            _key_hook = keyboard.hook(_disarm_on_any_key)
+            log("key hook installed")
+    threading.Thread(target=_install_key_hook, daemon=True).start()
 
 
 def show_hotkeys_window():
@@ -274,10 +297,17 @@ def build_menu():
     )
 
 
-keyboard.add_hotkey(ARM_KEY, arm_mode, suppress=True)
+icon = None
 
-log("startup ok")
+def main():
+    global icon
+    keyboard.add_hotkey(ARM_KEY, arm_mode, suppress=True)
+    log("startup ok")
 
-# Run tray icon on main thread - keeps process alive
-icon = pystray.Icon("qafill", make_icon_image(notifications_enabled), "qafill", build_menu())
-icon.run()
+    # Run tray icon on main thread - keeps process alive
+    icon = pystray.Icon("qafill", make_icon_image(notifications_enabled), "qafill", build_menu())
+    icon.run()
+
+
+if __name__ == "__main__":
+    main()
