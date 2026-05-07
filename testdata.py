@@ -28,10 +28,18 @@ last_label = None
 last_value = None
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qafill.log")
+ARM_KEY = "ctrl+shift+space"
+ARM_TIMEOUT = 3.0  # seconds before auto-disarm
+
+_armed = False
+_arm_timer = None
+_armed_hotkeys = []
+
 
 def log(message):
     with open(LOG_PATH, "a") as f:
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+
 
 def resolve(value):
     """Call the value if callable, otherwise use it as a literal string."""
@@ -41,8 +49,8 @@ def resolve(value):
         log(f"resolve error: {e}")
         return f"[error: {e}]"
 
-# Payment processor test cards
-# Ctrl+Shift+Alt+1 through Ctrl+Shift+Alt+4
+
+# Payment processor test cards - mapped to chord keys 1-4
 # Add or swap out cards for your processor - format: (label, number, expiry, cvv)
 TEST_CARDS = [
     ("Visa",        "4263982640269299", "02/2026", "837"),
@@ -50,17 +58,6 @@ TEST_CARDS = [
     ("Amex",        "374251018720955",  "02/2026", "1234"),
     ("Discover",    "6011000000000004", "02/2026", "123"),
 ]
-
-HOTKEYS = {
-    "ctrl+shift+alt+n": ("Name",       lambda: fake.name()),
-    "ctrl+shift+alt+f": ("First Name", lambda: fake.first_name()),
-    "ctrl+shift+alt+l": ("Last Name",  lambda: fake.last_name()),
-    "ctrl+shift+alt+e": ("Email",      lambda: fake.email()),
-    "ctrl+shift+alt+p": ("Phone",      lambda: fake.phone_number()),
-    "ctrl+shift+alt+a": ("Address",    lambda: fake.address().replace("\n", ", ")),
-    "ctrl+shift+alt+z": ("ZIP",        lambda: fake.zipcode()),
-    "ctrl+shift+alt+c": ("Card #",     lambda: fake.credit_card_number()),
-}
 
 # Load .env into os.environ before importing local.py so lambdas can use os.environ.get()
 def _load_dotenv():
@@ -76,7 +73,7 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# Local custom strings - Ctrl+Shift+Alt+5 through Ctrl+Shift+Alt+8
+# Local custom strings - chord keys 5-8
 # Create local.py (gitignored) using local.example.py as a template
 try:
     from local import CUSTOM_STRINGS
@@ -85,30 +82,37 @@ except ImportError:
     CUSTOM_STRINGS = []
 
 HOTKEY_REFERENCE = [
-    ("Ctrl+Shift+Alt+N", "Full Name"),
-    ("Ctrl+Shift+Alt+F", "First Name"),
-    ("Ctrl+Shift+Alt+L", "Last Name"),
-    ("Ctrl+Shift+Alt+E", "Email"),
-    ("Ctrl+Shift+Alt+P", "Phone"),
-    ("Ctrl+Shift+Alt+A", "Address"),
-    ("Ctrl+Shift+Alt+Z", "ZIP Code"),
-    ("Ctrl+Shift+Alt+C", "Random Card #"),
+    (ARM_KEY.title().replace("+", " + "), "Arm / disarm  (dot turns green)"),
+    ("", ""),
+    ("N", "Full Name"),
+    ("F", "First Name"),
+    ("L", "Last Name"),
+    ("E", "Email"),
+    ("P", "Phone"),
+    ("A", "Address"),
+    ("Z", "ZIP Code"),
+    ("C", "Random Card #"),
 ] + [
-    (f"Ctrl+Shift+Alt+{i}", f"{card[0]} test card")
+    (str(i), f"{card[0]} test card")
     for i, card in enumerate(TEST_CARDS, start=1)
 ] + [
-    (f"Ctrl+Shift+Alt+{i}", label)
+    (str(i), label)
     for i, (label, _) in enumerate(CUSTOM_STRINGS, start=5)
 ] + [
-    ("Ctrl+Shift+Alt+R", "Repeat Last"),
-    ("Ctrl+Shift+Alt+T", "Toggle Notifications"),
+    ("R", "Repeat Last"),
+    ("T", "Toggle Notifications"),
 ]
 
 
-def make_icon_image(active=False):
+def make_icon_image(active=False, armed=False):
     img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    color = (220, 120, 30) if active else (30, 120, 220)  # orange = on, blue = off
+    if armed:
+        color = (30, 180, 30)       # green  = armed
+    elif active:
+        color = (220, 120, 30)      # orange = notifications on
+    else:
+        color = (30, 120, 220)      # blue   = idle
     draw.ellipse([1, 1, 30, 30], fill=color)
     return img
 
@@ -124,9 +128,6 @@ def copy(label, value):
             app_name="qafill",
             timeout=3,
         )
-    keyboard.release("ctrl")
-    keyboard.release("shift")
-    keyboard.release("alt")
     time.sleep(0.05)
     keyboard.send("ctrl+v")
 
@@ -139,13 +140,69 @@ def repeat_last():
 def toggle_notifications():
     global notifications_enabled
     notifications_enabled = not notifications_enabled
-    icon.icon = make_icon_image(notifications_enabled)
+    icon.icon = make_icon_image(notifications_enabled, _armed)
     notification.notify(
         title="qafill",
         message=f"Notifications {'ON' if notifications_enabled else 'OFF'}",
         app_name="qafill",
         timeout=2,
     )
+
+
+def disarm_mode():
+    global _armed, _arm_timer, _armed_hotkeys
+    _armed = False
+    icon.icon = make_icon_image(notifications_enabled, armed=False)
+    if _arm_timer:
+        _arm_timer.cancel()
+        _arm_timer = None
+    for hk in _armed_hotkeys:
+        try:
+            keyboard.remove_hotkey(hk)
+        except Exception:
+            pass
+    _armed_hotkeys = []
+
+
+def arm_mode():
+    global _armed, _arm_timer, _armed_hotkeys
+    if _armed:
+        disarm_mode()
+        return
+    _armed = True
+    icon.icon = make_icon_image(notifications_enabled, armed=True)
+
+    # Build chord map now so card/custom values are current
+    chord_map = {
+        "n": lambda: copy("Name",       fake.name()),
+        "f": lambda: copy("First Name", fake.first_name()),
+        "l": lambda: copy("Last Name",  fake.last_name()),
+        "e": lambda: copy("Email",      fake.email()),
+        "p": lambda: copy("Phone",      fake.phone_number()),
+        "a": lambda: copy("Address",    fake.address().replace("\n", ", ")),
+        "z": lambda: copy("ZIP",        fake.zipcode()),
+        "c": lambda: copy("Card #",     fake.credit_card_number()),
+        "r": repeat_last,
+        "t": toggle_notifications,
+    }
+    for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
+        chord_map[str(i)] = lambda t=card_type, n=number: copy(t, n)
+    for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
+        chord_map[str(i)] = lambda l=label, v=value: copy(l, v)
+
+    # Register chord keys only while armed
+    for key, action in chord_map.items():
+        hk = keyboard.add_hotkey(
+            key,
+            lambda a=action: threading.Thread(target=lambda: (disarm_mode(), a()), daemon=True).start(),
+            suppress=True,
+        )
+        _armed_hotkeys.append(hk)
+
+    # Auto-disarm after timeout
+    _arm_timer = threading.Timer(ARM_TIMEOUT, disarm_mode)
+    _arm_timer.daemon = True
+    _arm_timer.start()
 
 
 def show_hotkeys_window():
@@ -160,17 +217,22 @@ def show_hotkeys_window():
     tk.Label(frame, text="Hotkeys", font=("Segoe UI", 12, "bold")).grid(
         row=0, columnspan=2, pady=(0, 8)
     )
-    for i, (hotkey, desc) in enumerate(HOTKEY_REFERENCE, start=1):
+    row = 1
+    for hotkey, desc in HOTKEY_REFERENCE:
+        if hotkey == "":
+            row += 1
+            continue
         tk.Label(frame, text=hotkey, font=("Consolas", 10), anchor="w", width=22).grid(
-            row=i, column=0, sticky="w", pady=1
+            row=row, column=0, sticky="w", pady=1
         )
         tk.Label(frame, text=desc, font=("Segoe UI", 10), anchor="w").grid(
-            row=i, column=1, sticky="w", padx=(8, 0)
+            row=row, column=1, sticky="w", padx=(8, 0)
         )
-    tk.Button(frame, text="Close", command=win.destroy, width=10).grid(
-        row=len(HOTKEY_REFERENCE) + 1, columnspan=2, pady=(12, 0)
-    )
+        row += 1
 
+    tk.Button(frame, text="Close", command=win.destroy, width=10).grid(
+        row=row + 1, columnspan=2, pady=(12, 0)
+    )
     win.mainloop()
 
 
@@ -190,24 +252,7 @@ def build_menu():
     )
 
 
-# Register hotkeys
-keyboard.add_hotkey("ctrl+shift+alt+t", toggle_notifications)
-keyboard.add_hotkey("ctrl+shift+alt+r", repeat_last)
-
-for hotkey, (label, generator) in HOTKEYS.items():
-    keyboard.add_hotkey(hotkey, lambda lbl=label, gen=generator: copy(lbl, gen()))
-
-for i, (card_type, number, exp, cvv) in enumerate(TEST_CARDS, start=1):
-    keyboard.add_hotkey(
-        f"ctrl+shift+alt+{i}",
-        lambda t=card_type, n=number: copy(f"{t}", n),
-    )
-
-for i, (label, value) in enumerate(CUSTOM_STRINGS, start=5):
-    keyboard.add_hotkey(
-        f"ctrl+shift+alt+{i}",
-        lambda lbl=label, val=value: copy(lbl, val),
-    )
+keyboard.add_hotkey(ARM_KEY, arm_mode, suppress=True)
 
 log("startup ok")
 

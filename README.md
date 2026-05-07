@@ -38,33 +38,35 @@ A blue dot appears in the system tray overflow (`^` near the clock) to confirm i
 
 ## Hotkeys
 
-| Hotkey | Output |
-|--------|--------|
-| `Ctrl+Shift+Alt+ N` | Full name |
-| `Ctrl+Shift+Alt+ F` | First name |
-| `Ctrl+Shift+Alt+ L` | Last name |
-| `Ctrl+Shift+Alt+ E` | Email address |
-| `Ctrl+Shift+Alt+ P` | Phone number |
-| `Ctrl+Shift+Alt+ A` | Full address (single line) |
-| `Ctrl+Shift+Alt+ Z` | ZIP code |
-| `Ctrl+Shift+Alt+ C` | Random credit card number |
-| `Ctrl+Shift+Alt+ 1` | Test card 1 |
-| `Ctrl+Shift+Alt+ 2` | Test card 2 |
-| `Ctrl+Shift+Alt+ 3` | Test card 3 |
-| `Ctrl+Shift+Alt+ 4` | Test card 4 |
-| `Ctrl+Shift+Alt+ 5-8` | Custom strings (local.py) |
-| `Ctrl+Shift+Alt+ R` | Repeat last generated value |
-| `Ctrl+Shift+Alt+ T` | Toggle toast notifications on/off |
+Press `Ctrl+Shift+Space` to arm qafill (tray dot turns green), then press a single key. Auto-disarms after 3 seconds.
 
-All hotkeys copy to clipboard and auto-paste into the focused field.
+| Step 1 | Step 2 | Output |
+|--------|--------|--------|
+| `Ctrl+Shift+Space` | - | Arm / disarm |
+| (armed) | `N` | Full name |
+| (armed) | `F` | First name |
+| (armed) | `L` | Last name |
+| (armed) | `E` | Email address |
+| (armed) | `P` | Phone number |
+| (armed) | `A` | Full address (single line) |
+| (armed) | `Z` | ZIP code |
+| (armed) | `C` | Random credit card number |
+| (armed) | `1-4` | Test cards |
+| (armed) | `5-8` | Custom strings (local.py) |
+| (armed) | `R` | Repeat last generated value |
+| (armed) | `T` | Toggle toast notifications |
+
+All hotkeys auto-paste into the focused field.
 
 ## System Tray
 
-The tray icon changes color to reflect notification state:
-- **Blue dot** - notifications off
-- **Orange dot** - notifications on
+| Color | State |
+|-------|-------|
+| Blue | Idle |
+| Green | Armed - waiting for key |
+| Orange | Notifications on |
 
-The app appears as **qafill** in Settings > Personalization > Taskbar > Other system tray icons (not "python").
+The app appears as **qafill** in Settings > Personalization > Taskbar > Other system tray icons.
 
 Right-click to toggle notifications, open the hotkey reference window, or exit.
 
